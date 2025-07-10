@@ -1,200 +1,105 @@
+
+
 import streamlit as st
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-import langid
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 from deep_translator import GoogleTranslator
 from gtts import gTTS
+import langid
 import os
 from moviepy.editor import VideoFileClip
 
+# Page config
 st.set_page_config(page_title="VOICE-LINGUA", page_icon=":microphone:")
 
-primary_color = "#0072C6"  # Blue
-secondary_color = "#F5F5F5"  # Light gray
-background_color = "#FFFF00"  # White
-
-st.markdown(
-    f"""
+# Style
+st.markdown("""
     <style>
-    .reportview-container {{
-        background-color: {background_color}
-    }}
-    h1 {{
-        color: {primary_color};
-    }}
-    .stFileUploader {{
-        color: {primary_color};
-    }}
-    .stHeader {{
-        color: {primary_color};
-    }}
+    .reportview-container {
+        background-color: #FFFF00;
+    }
+    h1, .stFileUploader, .stHeader {
+        color: #0072C6;
+    }
+    [data-testid="stSidebar"] {
+        min-width: 300px;
+        max-width: 300px;
+    }
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
+# Sidebar
 with st.sidebar:
     st.image("logo.png")
     st.title("VOICE-LINGUA")
     if "option" not in st.session_state:
         st.session_state.option = "Speech Recognition"
-    option = st.radio("Select an option:", ("Speech Recognition", "Translation", " Speech Generation", "Audio Extraction","Summarization"), key="option")
+    option = st.radio("Select an option:", (
+        "Speech Recognition",
+        "Translation",
+        "Speech Generation",
+        "Audio Extraction",
+        "Summarization"
+    ), key="option")
 
+# Language mappings
 lang_code_mapping = {
-    "en": "eng_Latn",   # English
-    "hi": "hin_Deva",   # Hindi
-    "fr": "fra_Latn",   # French
-    "de": "deu_Latn",   # German
-    "es": "spa_Latn",   # Spanish
-    "it": "ita_Latn",   # Italian
-    "pt": "por_Latn",   # Portuguese
-    "ru": "rus_Cyrl",   # Russian
-    "ja": "jpn_Jpan",   # Japanese
-    "ko": "kor_Hang",   # Korean
-    "zh": "chi_Hans",   # Simplified Chinese
-    "ar": "ara_Arab",   # Arabic
-    "tr": "tur_Latn",   # Turkish
-    "nl": "nld_Latn",   # Dutch
-    "pl": "pol_Latn",   # Polish
-    "uk": "ukr_Cyrl",   # Ukrainian
-    "vi": "vie_Latn",   # Vietnamese
-    "th": "tha_Thai",   # Thai
-    "id": "ind_Latn",   # Indonesian
-    "ms": "mal_Mlym",   # Malay
-    "ta": "tam_Taml",   # Tamil
-    "te": "tel_Telu",   # Telugu
-    "mr": "mar_Deva",   # Marathi
-    "bn": "ben_Beng",   # Bengali
-    "gu": "guj_Gujr",   # Gujarati
-    "kn": "kan_Knda",   # Kannada
-    "pa": "pan_Guru",   # Punjabi
-    "ur": "urd_Arab",   # Urdu
-    "si": "sin_Sinh",   # Sinhala
-    "mt": "mlt_Latn",   # Maltese
-    "fi": "fin_Latn",   # Finnish
-    "sv": "swe_Latn",   # Swedish
-    "da": "dan_Latn",   # Danish
-    "no": "nor_Latn",   # Norwegian
-    "hu": "hun_Latn",   # Hungarian
-    "he": "heb_Hebr",   # Hebrew
-    "el": "ell_Grek",   # Greek
-    "ro": "rom_Latn",   # Romanian
-    "bg": "bul_Cyrl",   # Bulgarian
-    "sr": "srp_Cyrl",   # Serbian
-    "cs": "ces_Latn",   # Czech
-    "sk": "slk_Latn",   # Slovak
-    "hr": "hrv_Latn",   # Croatian
-    "fa": "pes_Arab",   # Persian
-    "lt": "lit_Latn",   # Lithuanian
-    "lv": "lav_Latn",   # Latvian
-    "et": "est_Latn",   # Estonian
-    "sw": "swa_Latn",   # Swahili
-    "sl": "slv_Latn"    # Slovenian
+    "en": "eng_Latn", "hi": "hin_Deva", "fr": "fra_Latn", "de": "deu_Latn", "es": "spa_Latn",
+    "it": "ita_Latn", "pt": "por_Latn", "ru": "rus_Cyrl", "ja": "jpn_Jpan", "ko": "kor_Hang",
+    "zh": "chi_Hans", "ar": "ara_Arab", "tr": "tur_Latn", "nl": "nld_Latn", "pl": "pol_Latn",
+    "uk": "ukr_Cyrl", "vi": "vie_Latn", "th": "tha_Thai", "id": "ind_Latn", "ms": "mal_Mlym",
+    "ta": "tam_Taml", "te": "tel_Telu", "mr": "mar_Deva", "bn": "ben_Beng", "gu": "guj_Gujr",
+    "kn": "kan_Knda", "pa": "pan_Guru", "ur": "urd_Arab", "si": "sin_Sinh", "mt": "mlt_Latn",
+    "fi": "fin_Latn", "sv": "swe_Latn", "da": "dan_Latn", "no": "nor_Latn", "hu": "hun_Latn",
+    "he": "heb_Hebr", "el": "ell_Grek", "ro": "rom_Latn", "bg": "bul_Cyrl", "sr": "srp_Cyrl",
+    "cs": "ces_Latn", "sk": "slk_Latn", "hr": "hrv_Latn", "fa": "pes_Arab", "lt": "lit_Latn",
+    "lv": "lav_Latn", "et": "est_Latn", "sw": "swa_Latn", "sl": "slv_Latn"
 }
 
+lang_code_mapping2 = {k: k for k in lang_code_mapping}
 
-lang_code_mapping2 = {
-    "en": "en",   # English
-    "hi": "hi",   # Hindi
-    "fr": "fr",   # French
-    "de": "de",   # German
-    "es": "es",   # Spanish
-    "it": "it",   # Italian
-    "pt": "pt",   # Portuguese
-    "ru": "ru",   # Russian
-    "ja": "ja",   # Japanese
-    "ko": "ko",   # Korean
-    "zh": "zh",   # Simplified Chinese
-    "ar": "ar",   # Arabic
-    "tr": "tr",   # Turkish
-    "nl": "nl",   # Dutch
-    "pl": "pl",   # Polish
-    "uk": "uk",   # Ukrainian
-    "vi": "vi",   # Vietnamese
-    "th": "th",   # Thai
-    "id": "id",   # Indonesian
-    "ms": "ms",   # Malay
-    "ta": "ta",   # Tamil
-    "te": "te",   # Telugu
-    "mr": "mr",   # Marathi
-    "bn": "bn",   # Bengali
-    "gu": "gu",   # Gujarati
-    "kn": "kn",   # Kannada
-    "pa": "pa",   # Punjabi
-    "ur": "ur",   # Urdu
-    "si": "si",   # Sinhala
-    "mt": "mt",   # Maltese
-    "fi": "fi",   # Finnish
-    "sv": "sv",   # Swedish
-    "da": "da",   # Danish
-    "no": "no",   # Norwegian
-    "hu": "hu",   # Hungarian
-    "he": "he",   # Hebrew
-    "el": "el",   # Greek
-    "ro": "ro",   # Romanian
-    "bg": "bg",   # Bulgarian
-    "sr": "sr",   # Serbian
-    "cs": "cs",   # Czech
-    "sk": "sk",   # Slovak
-    "hr": "hr",   # Croatian
-    "fa": "fa",   # Persian
-    "lt": "lt",   # Lithuanian
-    "lv": "lv",   # Latvian
-    "et": "et",   # Estonian
-    "sw": "sw",   # Swahili
-    "sl": "sl"    # Slovenian
-}
+# Cached resources
+@st.cache_resource
+def load_whisper_model():
+    model_id = "openai/whisper-large-v3"
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, torch_dtype=dtype, use_safetensors=True).to(device)
+    processor = AutoProcessor.from_pretrained(model_id)
+    return model, processor, device, dtype
 
+@st.cache_resource
+def load_nllb_model():
+    tokenizer = AutoTokenizer.from_pretrained("facebook/nllb-200-distilled-600M")
+    model = AutoModelForSeq2SeqLM.from_pretrained("facebook/nllb-200-distilled-600M")
+    return tokenizer, model
+
+@st.cache_resource
+def load_summarizer():
+    return pipeline('summarization', model='sshleifer/distilbart-cnn-12-6')
+
+# Utility functions
 def detect_language_nllb(text):
-    # Detect language using langid
     lang_code, _ = langid.classify(text)
-    print(f"Detected Language Code: {lang_code}")
-
-    nllb_code = lang_code_mapping.get(lang_code, "eng_Latn")  # Default to "eng_Latn" if not found
-    return nllb_code
+    return lang_code_mapping.get(lang_code, "eng_Latn")
 
 def translate_and_generate_audio(text, target_lang, filename):
+    translated_text = GoogleTranslator(source='auto', target=target_lang).translate(text)
+    gTTS(text=translated_text, lang=target_lang).save(filename)
 
-    translator = GoogleTranslator(source='auto', target=target_lang)
-    translated_text = translator.translate(text)
-    tts = gTTS(text=translated_text, lang=target_lang)
-    tts.save(filename)
-    print(f"Audio file saved as: {filename}")
-
+# Speech Recognition
 if option == "Speech Recognition":
-
     st.title("Speech Recognition")
     st.subheader("Upload an audio file to transcribe:")
 
-    if "uploaded_file" not in st.session_state:
-        st.session_state.uploaded_file = None
-
-    uploaded_file = st.file_uploader("", type=["wav", "mp3", "m4a", "mpeg"], key="speech_to_text")
-
-    if uploaded_file is not None:
-        st.session_state.uploaded_file = uploaded_file
-    else:
-        uploaded_file = st.session_state.get("uploaded_file", None)
-
-    if uploaded_file is not None:
-        with open("uploaded_audio.wav", "wb") as f:
+    uploaded_file = st.file_uploader("Upload audio", type=["wav", "mp3", "m4a", "mpeg"], key="speech_to_text")
+    if uploaded_file:
+        audio_path = f"temp_{uploaded_file.name}"
+        with open(audio_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
+        st.audio(audio_path, format="audio/wav")
 
-        st.audio(uploaded_file, format="audio/wav")
-
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-        model_id = "openai/whisper-large-v3"
-
-        model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_id,
-            torch_dtype=torch_dtype,
-            use_safetensors=True
-        )
-        model.to(device)
-
-        processor = AutoProcessor.from_pretrained(model_id)
+        model, processor, device, dtype = load_whisper_model()
         pipe = pipeline(
             "automatic-speech-recognition",
             model=model,
@@ -204,152 +109,88 @@ if option == "Speech Recognition":
             chunk_length_s=15,
             batch_size=16,
             return_timestamps=True,
-            torch_dtype=torch_dtype,
+            torch_dtype=dtype,
             device=device,
         )
-
-        def transcribe_audio(audio):
-            result = pipe(audio)
-            transcript = result['text']
-            return transcript
-
-        transcript = transcribe_audio("uploaded_audio.wav")
-
-        # Detect language of the transcribed text
-        nllb_lang_code = detect_language_nllb(transcript)
-        print(f"NLLB-200 Language Code: {nllb_lang_code}")
+        result = pipe(audio_path)
+        transcript = result["text"]
+        lang_code = detect_language_nllb(transcript)
 
         st.header("Transcription:")
         st.write(transcript)
-        st.subheader("Language Code:")
-        st.write(nllb_lang_code)
+        st.subheader("Detected Language Code:")
+        st.write(lang_code)
 
+# Translation
 elif option == "Translation":
-
     st.title("Translation")
     st.subheader("Translate text from one language to another:")
 
-    if "input_text" not in st.session_state:
-        st.session_state.input_text = ""
-
-    if "src_lang" not in st.session_state:
-        st.session_state.src_lang = "en"
-
-    if "target_lang" not in st.session_state:
-        st.session_state.target_lang = "en"
-
-    input_text = st.text_area("Enter text to translate:", value=st.session_state.input_text, key="translation_input")
-    src_lang = st.selectbox("Select source language:", list(lang_code_mapping.keys()), index=list(lang_code_mapping.keys()).index(st.session_state.src_lang), key="translation_src_lang")
-    target_lang = st.selectbox("Select target language:", list(lang_code_mapping.keys()), index=list(lang_code_mapping.keys()).index(st.session_state.target_lang), key="translation_target_lang")
+    input_text = st.text_area("Enter text to translate:", key="translation_input")
+    src_lang = st.selectbox("Select source language:", list(lang_code_mapping.keys()), key="translation_src_lang")
+    target_lang = st.selectbox("Select target language:", list(lang_code_mapping.keys()), key="translation_target_lang")
 
     if st.button("Translate"):
-        st.session_state.input_text = input_text
-        st.session_state.src_lang = src_lang
-        st.session_state.target_lang = target_lang
-
-        src_lang_code = lang_code_mapping[src_lang]
-        target_lang_code = lang_code_mapping[target_lang]
-
-        tokenizer = AutoTokenizer.from_pretrained("facebook/nllb-200-distilled-600M")
-        model = AutoModelForSeq2SeqLM.from_pretrained("facebook/nllb-200-distilled-600M")
-
-        def translate_text(input_text, src_lang_code, target_lang_code):
-            translator = pipeline('translation', model=model, tokenizer=tokenizer, src_lang=src_lang_code, tgt_lang=target_lang_code)
-            translated_text = translator(input_text)[0]['translation_text']
-            return translated_text
-
-        output_text = translate_text(input_text, src_lang_code, target_lang_code)
+        src_code = lang_code_mapping[src_lang]
+        tgt_code = lang_code_mapping[target_lang]
+        tokenizer, model = load_nllb_model()
+        translator = pipeline('translation', model=model, tokenizer=tokenizer, src_lang=src_code, tgt_lang=tgt_code)
+        translated = translator(input_text)[0]['translation_text']
 
         st.header("Translated Text:")
-        st.write(output_text)
+        st.write(translated)
 
-elif option == " Speech Generation":
-    st.title(" Speech Generation")
+# Speech Generation
+elif option == "Speech Generation":
+    st.title("Speech Generation")
     st.subheader("Translate text and generate audio in the target language:")
 
-    if "input_text" not in st.session_state:
-        st.session_state.input_text = ""
+    input_text = st.text_area("Enter text to convert:", key="speak_input")
+    target_lang = st.selectbox("Select target language:", list(lang_code_mapping2.keys()), key="speak_target_lang")
 
-    if "target_lang" not in st.session_state:
-        st.session_state.target_lang = "en"
-
-    input_text = st.text_area("Enter text to translate:", value=st.session_state.input_text, key="translation_input")
-    target_lang = st.selectbox("Select target language:", list(lang_code_mapping2.keys()), index=list(lang_code_mapping2.keys()).index(st.session_state.target_lang), key="translation_target_lang2")
-
-    if st.button("Speech Generation"):
-        st.session_state.input_text = input_text
-        st.session_state.target_lang = target_lang
-
-        if target_lang in lang_code_mapping2:
-            target_lang_code2 = lang_code_mapping2[target_lang]
-        else:
-            st.error("Invalid language code. Please select a valid target language.")
-
-
-        filename = "output.mp3"
-        translate_and_generate_audio(input_text, target_lang_code2, filename)
-
+    if st.button("Generate Speech"):
+        filename = "generated_output.mp3"
+        translate_and_generate_audio(input_text, lang_code_mapping2[target_lang], filename)
         st.success("Audio file generated successfully!")
         st.audio(filename, format="audio/mp3")
 
+# Audio Extraction
 elif option == "Audio Extraction":
-
     st.title("Audio Extraction")
     st.subheader("Extract audio from a video file:")
 
-    video_file = st.text_input("Enter the path to the video file:", key="video_file")
-
+    video_path = st.text_input("Enter path to video file:")
     if st.button("Extract Audio"):
-
-        import os
-        if not os.path.isfile(video_file):
-            st.error("Error: The provided path is not a file.")
+        if not os.path.isfile(video_path):
+            st.error("File path is invalid.")
         else:
-            # Load the video file
-            video = VideoFileClip(video_file)
-
-            # Extract the audio from the video
+            video = VideoFileClip(video_path)
             audio = video.audio
-
-            # Write the audio to a file
-            audio_file = "output_audio.mp3"
-            audio.write_audiofile(audio_file)
-
+            audio_path = "extracted_audio.mp3"
+            audio.write_audiofile(audio_path)
             st.success("Audio extracted successfully!")
+            with open(audio_path, "rb") as file:
+                st.download_button("Download Audio", file.read(), file_name=audio_path, mime="audio/mpeg")
 
-            download_audio = st.button("Download the extracted audio file")
-            if download_audio:
-
-                with open(audio_file, "rb") as file:
-
-                    audio_data = file.read()
-
-                st.markdown(f"Content-Type: audio/mpeg")
-                st.markdown(f"Content-Disposition: attachment; filename={audio_file}")
-                st.markdown(f"Content-Length: {len(audio_data)}")
-                st.write(audio_data)
-            else:
-                st.info("Audio file not downloaded.")
+# Summarization
 elif option == "Summarization":
     st.title("Text Summarizer")
 
     input_text = st.text_area("Enter the text to summarize:", height=200)
-    input_text_words = input_text.split()
-    st.subheader("Number of words in the input text:")
-    st.write(len(input_text_words))
+    word_count = len(input_text.split())
 
-    min1 = max(10, int(len(input_text_words) / 3))  # Ensure min1 is at least 10
-    max1 = int(len(input_text_words) / 2)
-    min2 = int(len(input_text_words) / 2)
-    max2 = len(input_text_words)
+    if word_count > 0:
+        st.subheader("Word Count:")
+        st.write(word_count)
 
-    min_length = st.slider("Choose the minimum summary length", min_value=min1, max_value=max1, value=min1, step=5)
-    max_length = st.slider("Choose the maximum summary length", min_value=min2, max_value=max2, value=max2, step=10)
+        min_len = max(10, word_count // 3)
+        max_len = word_count
 
-    if st.button("Summarize"):
-        summarizer = pipeline('summarization', model='sshleifer/distilbart-cnn-12-6')
-        summary = summarizer(input_text, max_length=max_length, min_length=min_length, do_sample=False)[0]['summary_text']
-        st.subheader("Summary:")
-        st.write(summary)
+        min_summary = st.slider("Minimum summary length", min_value=min_len, max_value=word_count // 2, value=min_len, step=5)
+        max_summary = st.slider("Maximum summary length", min_value=word_count // 2, max_value=max_len, value=max_len, step=10)
 
-
+        if st.button("Summarize"):
+            summarizer = load_summarizer()
+            summary = summarizer(input_text, max_length=max_summary, min_length=min_summary, do_sample=False)[0]["summary_text"]
+            st.subheader("Summary:")
+            st.write(summary)
